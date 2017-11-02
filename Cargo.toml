@@ -1,0 +1,15 @@
+[package]
+name = "markfs"
+version = "0.1.0"
+authors = ["mark"]
+
+[dependencies]
+fuse = "0.3"
+libc = "0.2"
+log = "0.3"
+time = "0.1"
+rusqlite = "0.12"
+uuid = { version = "0.5", features = ["v4"] }
+
+[dev-dependencies]
+env_logger = "0.3"
