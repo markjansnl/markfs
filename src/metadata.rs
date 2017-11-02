@@ -1,16 +1,16 @@
 use time::Timespec;
 use rusqlite::Connection;
 use uuid::Uuid;
-use fuse::{FileType, FileAttr};
 
-const CREATE_TIME: Timespec = Timespec { sec: 1509654242, nsec: 0 };    // 2017-11-02 21:24:02
-
-struct INode {
-    ino: u32,
-    id: String,
-    parent: String,
-    name: String,
-    kind: FileType
+#[derive(Debug, Clone)]
+pub struct INode {
+    pub ino: u64,
+    pub id: String,
+    pub parent: String,
+    pub name: String,
+    pub kind: u32,
+    pub size: u64,
+    pub nlink: u32
 }
 
 pub struct Metadata {
@@ -50,29 +50,19 @@ impl Metadata {
         }
     }
 
-    pub fn get_attr(&self, ino: u64) -> Option<FileAttr> {
-        let mut stmt = self.conn.prepare("SELECT kind, size, nlink FROM inode WHERE ino = ?1").unwrap();
+    pub fn get_inode(&self, ino: u64) -> Option<INode> {
+        let mut stmt = self.conn.prepare("SELECT id, parent, name, kind, size, nlink FROM inode WHERE ino = ?1").unwrap();
         let mut inode_iter = stmt.query_map(&[&(ino as u32)], |row| {
-            let size: i64 = row.get(1);
+            let size: i64 = row.get(4);
 
-            FileAttr {
+            INode {
                 ino: ino,
+                id: row.get(0),
+                parent: row.get(1),
+                name: row.get(2),
+                kind: row.get(3),
                 size: size as u64,
-                blocks: 0,
-                atime: CREATE_TIME,
-                mtime: CREATE_TIME,
-                ctime: CREATE_TIME,
-                crtime: CREATE_TIME,
-                kind: match row.get(0) {
-                    0 => FileType::Directory,
-                    _ => FileType::RegularFile
-                },
-                perm: 0o755,
-                nlink: row.get(2),
-                uid: 501,
-                gid: 20,
-                rdev: 0,
-                flags: 0
+                nlink: row.get(5)
             }
         }).unwrap();
 
