@@ -39,7 +39,7 @@ impl Metadata {
                      &[&1, &root_guid, &root_name, &0, &0, &2]).unwrap();
 
         let hello_txt_guid = Uuid::new_v4().to_string();
-        let hello_txt_name = "hello_txt".to_string();
+        let hello_txt_name = "hello.txt".to_string();
 
         conn.execute("INSERT INTO inode (id, parent, name, kind, size, nlink)
                       VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -50,7 +50,7 @@ impl Metadata {
         }
     }
 
-    pub fn get_inode(&self, ino: u64) -> Option<INode> {
+    pub fn get_by_ino(&self, ino: u64) -> Option<INode> {
         let mut stmt = self.conn.prepare("SELECT id, parent, name, kind, size, nlink FROM inode WHERE ino = ?1").unwrap();
         let mut inode_iter = stmt.query_map(&[&(ino as u32)], |row| {
             let size: i64 = row.get(4);
@@ -69,4 +69,67 @@ impl Metadata {
         Some(inode_iter.nth(0).unwrap().unwrap())
     }
 
+    pub fn get_by_id(&self, id: String) -> Option<INode> {
+        let mut stmt = self.conn.prepare("SELECT ino, parent, name, kind, size, nlink FROM inode WHERE id = ?1").unwrap();
+        let mut inode_iter = stmt.query_map(&[&id], |row| {
+            let ino: i64 = row.get(0);
+            let size: i64 = row.get(4);
+
+            INode {
+                ino: ino as u64,
+                id: id.clone(),
+                parent: row.get(1),
+                name: row.get(2),
+                kind: row.get(3),
+                size: size as u64,
+                nlink: row.get(5)
+            }
+        }).unwrap();
+
+        Some(inode_iter.nth(0).unwrap().unwrap())
+    }
+
+    pub fn lookup(&self, parent: String, name: String) -> Option<INode> {
+        let mut stmt = self.conn.prepare("SELECT ino, id, kind, size, nlink FROM inode WHERE parent = ?1 AND name = ?2").unwrap();
+        let mut inode_iter = stmt.query_map(&[&parent, &name], |row| {
+            let ino: i64 = row.get(0);
+            let size: i64 = row.get(3);
+
+            INode {
+                ino: ino as u64,
+                id: row.get(1),
+                parent: parent.clone(),
+                name: name.clone(),
+                kind: row.get(2),
+                size: size as u64,
+                nlink: row.get(4)
+            }
+        }).unwrap();
+
+        Some(inode_iter.nth(0).unwrap().unwrap())
+    }
+
+    pub fn get_children(&self, parent: String) -> Vec<INode> {
+        let mut stmt = self.conn.prepare("SELECT ino, id, parent, name, kind, size, nlink FROM inode WHERE parent = ?1 AND id <> ?1").unwrap();
+        let mut inode_iter = stmt.query_map(&[&parent], |row| {
+            let ino: i64 = row.get(0);
+            let size: i64 = row.get(5);
+
+            INode {
+                ino: ino as u64,
+                id: row.get(1),
+                parent: row.get(2),
+                name: row.get(3),
+                kind: row.get(4),
+                size: size as u64,
+                nlink: row.get(6)
+            }
+        }).unwrap();
+
+        let mut children = Vec::new();
+        for child in inode_iter {
+            children.push(child.unwrap());
+        }
+        children
+    }
 }
