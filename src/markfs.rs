@@ -1,12 +1,14 @@
 use std::ffi::{OsStr, OsString};
-use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory};
+use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory, ReplyData};
 use time::Timespec;
 use libc::ENOENT;
-use metadata::Metadata;
+use metadata::{Metadata, INodeKind};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
 const CREATE_TIME: Timespec = Timespec { sec: 1509654242, nsec: 0 };    // 2017-11-02 21:24:02
+
+const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
 
 pub struct MarkFS {
     target: OsString,
@@ -37,8 +39,8 @@ impl Filesystem for MarkFS {
 	                ctime: CREATE_TIME,
     	            crtime: CREATE_TIME,
         	        kind: match inode.kind {
-            	        0 => FileType::Directory,
-                	    _ => FileType::RegularFile
+            	        INodeKind::Directory   => FileType::Directory,
+                	    INodeKind::RegularFile => FileType::RegularFile
 	                },
     	            perm: 0o755,
         	        nlink: inode.nlink,
@@ -68,8 +70,8 @@ impl Filesystem for MarkFS {
 	                ctime: CREATE_TIME,
     	            crtime: CREATE_TIME,
         	        kind: match inode.kind {
-            	        0 => FileType::Directory,
-                	    _ => FileType::RegularFile
+            	        INodeKind::Directory   => FileType::Directory,
+                	    INodeKind::RegularFile => FileType::RegularFile
 	                },
     	            perm: 0o755,
         	        nlink: inode.nlink,
@@ -91,7 +93,7 @@ impl Filesystem for MarkFS {
         let ino_inode = self.metadata.get_by_ino(ino);
         match ino_inode {
             Some(inode) => {
-                if inode.kind == 0 {
+                if inode.kind == INodeKind::Directory {
                     if offset == 0 {
                         let parent = self.metadata.get_by_id(inode.parent.clone()).unwrap();
 
@@ -112,6 +114,14 @@ impl Filesystem for MarkFS {
             None => {
                 reply.error(ENOENT);
             }
+        }
+    }
+
+    fn read (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
+        if ino == 2 {
+            reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
+        } else {
+            reply.error(ENOENT);
         }
     }
 }
