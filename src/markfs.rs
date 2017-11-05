@@ -118,6 +118,7 @@ impl Filesystem for MarkFS {
     }
 
     fn read (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
+        println!("Used target: {:?}", self.target);
         if ino == 2 {
             reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
         } else {

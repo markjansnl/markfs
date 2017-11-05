@@ -1,8 +1,7 @@
-use time::Timespec;
 use rusqlite::Connection;
 use uuid::Uuid;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum INodeKind {
     Directory = 0,
     RegularFile,
@@ -127,7 +126,7 @@ impl Metadata {
 
     pub fn get_children(&self, parent: String) -> Vec<INode> {
         let mut stmt = self.conn.prepare("SELECT ino, id, parent, name, kind, size, nlink FROM inode WHERE parent = ?1 AND id <> ?1").unwrap();
-        let mut inode_iter = stmt.query_map(&[&parent], |row| {
+        let inode_iter = stmt.query_map(&[&parent], |row| {
             let ino: i64 = row.get(0);
             let size: i64 = row.get(5);
 
