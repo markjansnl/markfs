@@ -2,13 +2,35 @@ use std::ffi::{OsStr, OsString};
 use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory, ReplyData};
 use time::Timespec;
 use libc::ENOENT;
-use metadata::{Metadata, INodeKind};
+use metadata::{Metadata, INode, INodeKind};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
 const CREATE_TIME: Timespec = Timespec { sec: 1509654242, nsec: 0 };    // 2017-11-02 21:24:02
 
 const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
+
+fn inode_to_fileattr(inode: INode) -> FileAttr {
+    FileAttr {
+        ino: inode.ino,
+    	size: inode.size,
+        blocks: 0,
+    	atime: CREATE_TIME,
+        mtime: CREATE_TIME,
+        ctime: CREATE_TIME,
+        crtime: CREATE_TIME,
+   	    kind: match inode.kind {
+       	    INodeKind::Directory   => FileType::Directory,
+            INodeKind::RegularFile => FileType::RegularFile
+        },
+        perm: 0o755,
+   	    nlink: inode.nlink,
+       	uid: 1000,
+        gid: 1000,
+        rdev: 0,
+        flags: 0
+    }
+}
 
 pub struct MarkFS {
     target: OsString,
@@ -30,27 +52,7 @@ impl Filesystem for MarkFS {
 
         match self.metadata.lookup(parent_inode.id, String::from(name.clone().to_str().unwrap())) {
             Some(inode) => {
-                let attr = FileAttr {
-	                ino: inode.ino,
-    	            size: inode.size,
-        	        blocks: 0,
-            	    atime: CREATE_TIME,
-                	mtime: CREATE_TIME,
-	                ctime: CREATE_TIME,
-    	            crtime: CREATE_TIME,
-        	        kind: match inode.kind {
-            	        INodeKind::Directory   => FileType::Directory,
-                	    INodeKind::RegularFile => FileType::RegularFile
-	                },
-    	            perm: 0o755,
-        	        nlink: inode.nlink,
-            	    uid: 1000,
-                	gid: 1000,
-	                rdev: 0,
-    	            flags: 0
-        	    };
-
-                reply.entry(&TTL, &attr, 0);
+                reply.entry(&TTL, &inode_to_fileattr(inode), 0);
             },
             None => {
                 reply.error(ENOENT);
@@ -61,27 +63,7 @@ impl Filesystem for MarkFS {
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match self.metadata.get_by_ino(ino) {
             Some(inode) => {
-                let attr = FileAttr {
-	                ino: inode.ino,
-    	            size: inode.size,
-        	        blocks: 0,
-            	    atime: CREATE_TIME,
-                	mtime: CREATE_TIME,
-	                ctime: CREATE_TIME,
-    	            crtime: CREATE_TIME,
-        	        kind: match inode.kind {
-            	        INodeKind::Directory   => FileType::Directory,
-                	    INodeKind::RegularFile => FileType::RegularFile
-	                },
-    	            perm: 0o755,
-        	        nlink: inode.nlink,
-            	    uid: 1000,
-                	gid: 1000,
-	                rdev: 0,
-    	            flags: 0
-        	    };
-
-                reply.attr(&TTL, &attr);
+                reply.attr(&TTL, &inode_to_fileattr(inode));
             },
             None => {
                 reply.error(ENOENT);
