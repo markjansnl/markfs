@@ -50,8 +50,11 @@ impl Filesystem for MarkFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let parent_inode = self.metadata.get_by_ino(parent).unwrap();
         let name_string = match name.to_str() {
-            Some(name_slice) => name_slice.to_string(),
-            None             => {
+            Some(name_slice) => {
+                name_slice.to_string()
+            },
+            None => {
+                // UTF-8 conversion error
                 reply.error(ENOENT);
                 return;
             }
