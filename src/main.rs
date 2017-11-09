@@ -22,5 +22,5 @@ fn main () {
     let target = &args[1];
     let mountpoint = &args[2];
 
-    fuse::mount(MarkFS::new(target, mountpoint, &[]).unwrap();
+    fuse::mount(MarkFS::new(target), mountpoint, &[]).unwrap();
 }
