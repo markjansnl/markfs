@@ -10,28 +10,6 @@ const CREATE_TIME: Timespec = Timespec { sec: 1509654242, nsec: 0 };    // 2017-
 
 const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
 
-fn inode_to_fileattr(inode: INode) -> FileAttr {
-    FileAttr {
-        ino: inode.ino,
-    	size: inode.size,
-        blocks: 0,
-    	atime: CREATE_TIME,
-        mtime: CREATE_TIME,
-        ctime: CREATE_TIME,
-        crtime: CREATE_TIME,
-   	    kind: match inode.kind {
-       	    INodeKind::Directory   => FileType::Directory,
-            INodeKind::RegularFile => FileType::RegularFile
-        },
-        perm: 0o755,
-   	    nlink: inode.nlink,
-       	uid: 1000,
-        gid: 1000,
-        rdev: 0,
-        flags: 0
-    }
-}
-
 pub struct MarkFS {
     target: OsString,
     metadata: Metadata
@@ -44,15 +22,44 @@ impl MarkFS {
             metadata: Metadata::new()
         }
     }
+
+    fn inode_to_fileattr(&self, inode: INode) -> FileAttr {
+        FileAttr {
+            ino: inode.ino,
+            size: inode.size,
+            blocks: 0,
+            atime: CREATE_TIME,
+            mtime: CREATE_TIME,
+            ctime: CREATE_TIME,
+            crtime: CREATE_TIME,
+            kind: match inode.kind {
+                INodeKind::Directory   => FileType::Directory,
+                INodeKind::RegularFile => FileType::RegularFile
+            },
+            perm: 0o755,
+            nlink: inode.nlink,
+            uid: 1000,
+            gid: 1000,
+            rdev: 0,
+            flags: 0
+        }
+    }
 }
 
 impl Filesystem for MarkFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         let parent_inode = self.metadata.get_by_ino(parent).unwrap();
+        let name_string = match name.to_str() {
+            Some(name_slice) => name_slice.to_string(),
+            None             => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
 
-        match self.metadata.lookup(parent_inode.id, String::from(name.clone().to_str().unwrap())) {
+        match self.metadata.lookup(&parent_inode.id, &name_string) {
             Some(inode) => {
-                reply.entry(&TTL, &inode_to_fileattr(inode), 0);
+                reply.entry(&TTL, &self.inode_to_fileattr(inode), 0);
             },
             None => {
                 reply.error(ENOENT);
@@ -63,7 +70,7 @@ impl Filesystem for MarkFS {
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match self.metadata.get_by_ino(ino) {
             Some(inode) => {
-                reply.attr(&TTL, &inode_to_fileattr(inode));
+                reply.attr(&TTL, &self.inode_to_fileattr(inode));
             },
             None => {
                 reply.error(ENOENT);
@@ -77,13 +84,13 @@ impl Filesystem for MarkFS {
             Some(inode) => {
                 if inode.kind == INodeKind::Directory {
                     if offset == 0 {
-                        let parent = self.metadata.get_by_id(inode.parent.clone()).unwrap();
+                        let parent = self.metadata.get_by_id(&inode.parent).unwrap();
 
                         reply.add(inode.ino, 0, FileType::Directory, ".");
                         reply.add(parent.ino, 1, FileType::Directory, "..");
 
                         let mut index = 2;
-                        for child in self.metadata.get_children(inode.parent.clone()) {
+                        for child in self.metadata.get_children(&inode.parent) {
                             reply.add(child.ino, index, FileType::RegularFile, child.name);
                             index += 1;
                         }

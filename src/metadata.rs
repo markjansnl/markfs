@@ -1,4 +1,5 @@
-use rusqlite::Connection;
+use rusqlite::{Connection};
+use rusqlite::types::ToSql;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,71 +67,33 @@ impl Metadata {
     }
 
     pub fn get_by_ino(&self, ino: u64) -> Option<INode> {
-        let mut stmt = self.conn.prepare("SELECT id, parent, name, kind, size, nlink FROM inode WHERE ino = ?1").unwrap();
-        let mut inode_iter = stmt.query_map(&[&(ino as u32)], |row| {
-            let size: i64 = row.get(4);
-
-            INode {
-                ino: ino,
-                id: row.get(0),
-                parent: row.get(1),
-                name: row.get(2),
-                kind: INodeKind::from_i32(row.get(3)).unwrap(),
-                size: size as u64,
-                nlink: row.get(5)
-            }
-        }).unwrap();
-
-        Some(inode_iter.nth(0).unwrap().unwrap())
+        self.query_inode("ino = ?1", &[&(ino as u32)]).pop()
     }
 
-    pub fn get_by_id(&self, id: String) -> Option<INode> {
-        let mut stmt = self.conn.prepare("SELECT ino, parent, name, kind, size, nlink FROM inode WHERE id = ?1").unwrap();
-        let mut inode_iter = stmt.query_map(&[&id], |row| {
-            let ino: i64 = row.get(0);
-            let size: i64 = row.get(4);
-
-            INode {
-                ino: ino as u64,
-                id: id.clone(),
-                parent: row.get(1),
-                name: row.get(2),
-                kind: INodeKind::from_i32(row.get(3)).unwrap(),
-                size: size as u64,
-                nlink: row.get(5)
-            }
-        }).unwrap();
-
-        Some(inode_iter.nth(0).unwrap().unwrap())
+    pub fn get_by_id(&self, id: &String) -> Option<INode> {
+        self.query_inode("id = ?1", &[&id.as_str()]).pop()
     }
 
-    pub fn lookup(&self, parent: String, name: String) -> Option<INode> {
-        let mut stmt = self.conn.prepare("SELECT ino, id, kind, size, nlink FROM inode WHERE parent = ?1 AND name = ?2").unwrap();
-        let mut inode_iter = stmt.query_map(&[&parent, &name], |row| {
-            let ino: i64 = row.get(0);
-            let size: i64 = row.get(3);
-
-            INode {
-                ino: ino as u64,
-                id: row.get(1),
-                parent: parent.clone(),
-                name: name.clone(),
-                kind: INodeKind::from_i32(row.get(2)).unwrap(),
-                size: size as u64,
-                nlink: row.get(4)
-            }
-        }).unwrap();
-
-        Some(inode_iter.nth(0).unwrap().unwrap())
+    pub fn lookup(&self, parent: &String, name: &String) -> Option<INode> {
+        self.query_inode("parent = ?1 AND name = ?2", &[&parent.as_str(), &name.as_str()]).pop()
     }
 
-    pub fn get_children(&self, parent: String) -> Vec<INode> {
-        let mut stmt = self.conn.prepare("SELECT ino, id, parent, name, kind, size, nlink FROM inode WHERE parent = ?1 AND id <> ?1").unwrap();
-        let inode_iter = stmt.query_map(&[&parent], |row| {
+    pub fn get_children(&self, parent: &String) -> Vec<INode> {
+        self.query_inode("parent = ?1 AND id <> ?1", &[&parent.as_str()])
+    }
+
+    fn query_inode(&self, where_clause: &str, params: &[&ToSql]) -> Vec<INode> {
+        let sql = format!("SELECT * FROM inode WHERE {}", where_clause);
+        let mut stmt = self.conn.prepare(sql.as_str()).unwrap();
+        let mut rows = stmt.query(params).unwrap();
+
+        let mut inodes = Vec::new();
+        while let Some(result_row) = rows.next() {
+            let row = result_row.unwrap();
             let ino: i64 = row.get(0);
             let size: i64 = row.get(5);
 
-            INode {
+            inodes.push(INode {
                 ino: ino as u64,
                 id: row.get(1),
                 parent: row.get(2),
@@ -138,13 +101,9 @@ impl Metadata {
                 kind: INodeKind::from_i32(row.get(4)).unwrap(),
                 size: size as u64,
                 nlink: row.get(6)
-            }
-        }).unwrap();
-
-        let mut children = Vec::new();
-        for child in inode_iter {
-            children.push(child.unwrap());
+            });
         }
-        children
+        inodes
     }
+
 }
