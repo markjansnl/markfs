@@ -23,6 +23,13 @@ impl MarkFS {
         }
     }
 
+    fn inode_kind_to_file_type(&self, kind: &INodeKind) -> FileType {
+        match *kind {
+            INodeKind::Directory   => FileType::Directory,
+            INodeKind::RegularFile => FileType::RegularFile
+        }
+    }
+
     fn inode_to_fileattr(&self, inode: INode) -> FileAttr {
         FileAttr {
             ino: inode.ino,
@@ -32,11 +39,8 @@ impl MarkFS {
             mtime: CREATE_TIME,
             ctime: CREATE_TIME,
             crtime: CREATE_TIME,
-            kind: match inode.kind {
-                INodeKind::Directory   => FileType::Directory,
-                INodeKind::RegularFile => FileType::RegularFile
-            },
-            perm: 0o755,
+            kind: self.inode_kind_to_file_type(&inode.kind),
+            perm: 0o775,
             nlink: inode.nlink,
             uid: 1000,
             gid: 1000,
@@ -82,8 +86,7 @@ impl Filesystem for MarkFS {
     }
 
     fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
-        let ino_inode = self.metadata.get_by_ino(ino);
-        match ino_inode {
+        match self.metadata.get_by_ino(ino) {
             Some(inode) => {
                 if inode.kind == INodeKind::Directory {
                     if offset == 0 {
@@ -94,7 +97,7 @@ impl Filesystem for MarkFS {
 
                         let mut index = 2;
                         for child in self.metadata.get_children(&inode.parent) {
-                            reply.add(child.ino, index, FileType::RegularFile, child.name);
+                            reply.add(child.ino, index, self.inode_kind_to_file_type(&child.kind), child.name);
                             index += 1;
                         }
                     }
