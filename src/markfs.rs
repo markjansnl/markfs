@@ -6,8 +6,6 @@ use metadata::{Metadata, INode, INodeKind};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
-const CREATE_TIME: Timespec = Timespec { sec: 1509654242, nsec: 0 };    // 2017-11-02 21:24:02
-
 const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
 
 pub struct MarkFS {
@@ -35,10 +33,10 @@ impl MarkFS {
             ino: inode.ino,
             size: inode.size,
             blocks: 0,
-            atime: CREATE_TIME,
-            mtime: CREATE_TIME,
-            ctime: CREATE_TIME,
-            crtime: CREATE_TIME,
+            atime: inode.atime,
+            mtime: inode.mtime,
+            ctime: inode.ctime,
+            crtime: inode.crtime,
             kind: self.inode_kind_to_file_type(&inode.kind),
             perm: 0o775,
             nlink: inode.nlink,
@@ -88,7 +86,7 @@ impl Filesystem for MarkFS {
     fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
         match self.metadata.get_by_ino(ino) {
             Some(inode) => {
-                if inode.kind == INodeKind::Directory {
+                if inode.kind.is_directory() {
                     if offset == 0 {
                         let parent = self.metadata.get_by_id(&inode.parent).unwrap();
 

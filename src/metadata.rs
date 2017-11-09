@@ -1,5 +1,7 @@
-use rusqlite::{Connection};
+use rusqlite::Connection;
 use rusqlite::types::ToSql;
+use time;
+use time::Timespec;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -16,6 +18,10 @@ impl INodeKind {
             _ => None
         }
     }
+
+    pub fn is_directory(&self) -> bool {
+        *self == INodeKind::Directory
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +32,10 @@ pub struct INode {
     pub name: String,
     pub kind: INodeKind,
     pub size: u64,
+    pub atime: Timespec,
+    pub mtime: Timespec,
+    pub ctime: Timespec,
+    pub crtime: Timespec,
     pub nlink: u32
 }
 
@@ -44,22 +54,27 @@ impl Metadata {
                         name        TEXT NOT NULL,
                         kind        INTEGER NOT NULL,
                         size        INTEGER NOT NULL,
+                        atime       TEXT NOT NULL,
+                        mtime       TEXT NOT NULL,
+                        ctime       TEXT NOT NULL,
+                        crtime      TEXT NOT NULL,
                         nlink       INTEGER NOT NULL
                     )", &[]).unwrap();
 
         let root_guid = Uuid::new_v4().to_string();
         let root_name = "".to_string();
+        let create_time = time::get_time();
 
-        conn.execute("INSERT INTO inode (ino, id, parent, name, kind, size, nlink)
-                      VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6)",
-                     &[&1, &root_guid, &root_name, &(INodeKind::Directory as i32), &0, &2]).unwrap();
+        conn.execute("INSERT INTO inode (ino, id, parent, name, kind, size, atime, mtime, ctime, crtime, nlink)
+                      VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?7)",
+                     &[&1, &root_guid, &root_name, &(INodeKind::Directory as i32), &0, &create_time, &2]).unwrap();
 
         let hello_txt_guid = Uuid::new_v4().to_string();
         let hello_txt_name = "hello.txt".to_string();
 
-        conn.execute("INSERT INTO inode (id, parent, name, kind, size, nlink)
-                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                     &[&hello_txt_guid, &root_guid, &hello_txt_name, &(INodeKind::RegularFile as i32), &13, &1]).unwrap();
+        conn.execute("INSERT INTO inode (id, parent, name, kind, size, atime, mtime, ctime, crtime, nlink)
+                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?7)",
+                     &[&hello_txt_guid, &root_guid, &hello_txt_name, &(INodeKind::RegularFile as i32), &13, &create_time, &1]).unwrap();
 
         Metadata {
             conn: conn
@@ -100,7 +115,11 @@ impl Metadata {
                 name: row.get(3),
                 kind: INodeKind::from_i32(row.get(4)).unwrap(),
                 size: size as u64,
-                nlink: row.get(6)
+                atime: row.get(6),
+                mtime: row.get(7),
+                ctime: row.get(8),
+                crtime: row.get(9),
+                nlink: row.get(10)
             });
         }
         inodes
