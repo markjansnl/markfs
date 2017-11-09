@@ -19,8 +19,8 @@ fn main () {
         ::std::process::exit(-1);
     }
 
-    let target = args[1].clone();
+    let target = &args[1];
     let mountpoint = &args[2];
-    
-    fuse::mount(MarkFS::new(target), mountpoint, &[]).unwrap();
+
+    fuse::mount(MarkFS::new(target, mountpoint, &[]).unwrap();
 }

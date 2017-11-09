@@ -14,9 +14,9 @@ pub struct MarkFS {
 }
 
 impl MarkFS {
-    pub fn new(target: OsString) -> MarkFS {
+    pub fn new(target: &OsString) -> MarkFS {
         MarkFS {
-            target: target,
+            target: target.clone(),
             metadata: Metadata::new()
         }
     }
