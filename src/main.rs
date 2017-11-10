@@ -15,12 +15,12 @@ fn main () {
     let args: Vec<OsString> = env::args_os().collect();
 
     if args.len() != 3 {
-        println!("Usage: {:?} <target> <mountpoint>", &args[0]);
+        println!("Usage: {:?} <local_path> <mountpoint>", &args[0]);
         ::std::process::exit(-1);
     }
 
-    let target = &args[1];
+    let local_path = &args[1];
     let mountpoint = &args[2];
 
-    fuse::mount(MarkFS::new(target), mountpoint, &[]).unwrap();
+    fuse::mount(MarkFS::new(local_path), mountpoint, &[]).unwrap();
 }

@@ -1,3 +1,4 @@
 /target/
+/backing/
 /mnt/
 **/*.rs.bk

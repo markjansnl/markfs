@@ -9,15 +9,15 @@ const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
 
 pub struct MarkFS {
-    target: OsString,
+    local_path: OsString,
     metadata: Metadata
 }
 
 impl MarkFS {
-    pub fn new(target: &OsString) -> MarkFS {
+    pub fn new(local_path: &OsString) -> MarkFS {
         MarkFS {
-            target: target.clone(),
-            metadata: Metadata::new()
+            local_path: local_path.clone(),
+            metadata: Metadata::new(&local_path)
         }
     }
 
@@ -111,7 +111,7 @@ impl Filesystem for MarkFS {
     }
 
     fn read (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
-        println!("Used target: {:?}", self.target);
+        println!("local path: {:?}", self.local_path);
         if ino == 2 {
             reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
         } else {

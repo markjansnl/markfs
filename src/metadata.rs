@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+use std::path::Path;
 use rusqlite::Connection;
 use rusqlite::types::ToSql;
 use time;
@@ -44,37 +46,41 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new() -> Metadata {
-        let conn = Connection::open_in_memory().unwrap();
+    pub fn new(local_path: &OsString) -> Metadata {
+        let path_buf = Path::new(local_path).join("metadata.sqlite");
+        let conn = Connection::open(path_buf.as_path()).unwrap();
 
-        conn.execute("CREATE TABLE inode (
-                        ino         INTEGER PRIMARY KEY,
-                        id          TEXT NOT NULL,
-                        parent      TEXT NOT NULL,
-                        name        TEXT NOT NULL,
-                        kind        INTEGER NOT NULL,
-                        size        INTEGER NOT NULL,
-                        atime       TEXT NOT NULL,
-                        mtime       TEXT NOT NULL,
-                        ctime       TEXT NOT NULL,
-                        crtime      TEXT NOT NULL,
-                        nlink       INTEGER NOT NULL
-                    )", &[]).unwrap();
+        let create_table = conn.execute("
+            CREATE TABLE inode (
+                ino         INTEGER PRIMARY KEY,
+                id          TEXT NOT NULL,
+                parent      TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                kind        INTEGER NOT NULL,
+                size        INTEGER NOT NULL,
+                atime       TEXT NOT NULL,
+                mtime       TEXT NOT NULL,
+                ctime       TEXT NOT NULL,
+                crtime      TEXT NOT NULL,
+                nlink       INTEGER NOT NULL
+            )", &[]);
 
-        let root_guid = Uuid::new_v4().to_string();
-        let root_name = "".to_string();
-        let create_time = time::get_time();
+        if create_table.is_ok() {
+            let root_guid = Uuid::new_v4().to_string();
+            let root_name = "";
+            let create_time = time::get_time();
 
-        conn.execute("INSERT INTO inode (ino, id, parent, name, kind, size, atime, mtime, ctime, crtime, nlink)
-                      VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?7)",
-                     &[&1, &root_guid, &root_name, &(INodeKind::Directory as i32), &0, &create_time, &2]).unwrap();
+            conn.execute("INSERT INTO inode (ino, id, parent, name, kind, size, atime, mtime, ctime, crtime, nlink)
+                          VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?7)",
+                         &[&1, &root_guid, &root_name, &(INodeKind::Directory as i32), &0, &create_time, &2]).unwrap();
 
-        let hello_txt_guid = Uuid::new_v4().to_string();
-        let hello_txt_name = "hello.txt".to_string();
+            let hello_txt_guid = Uuid::new_v4().to_string();
+            let hello_txt_name = "hello.txt";
 
-        conn.execute("INSERT INTO inode (id, parent, name, kind, size, atime, mtime, ctime, crtime, nlink)
-                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?7)",
-                     &[&hello_txt_guid, &root_guid, &hello_txt_name, &(INodeKind::RegularFile as i32), &13, &create_time, &1]).unwrap();
+            conn.execute("INSERT INTO inode (id, parent, name, kind, size, atime, mtime, ctime, crtime, nlink)
+                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?6, ?7)",
+                         &[&hello_txt_guid, &root_guid, &hello_txt_name, &(INodeKind::RegularFile as i32), &13, &create_time, &1]).unwrap();
+        }
 
         Metadata {
             conn: conn
