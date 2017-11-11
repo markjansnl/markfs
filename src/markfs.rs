@@ -1,23 +1,31 @@
 use std::ffi::{OsStr, OsString};
-use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory, ReplyData};
+use std::collections::HashMap;
+use std::path::Path;
+use std::fs::OpenOptions;
+use std::fs::File;
+use std::io::{SeekFrom};
+use std::io::prelude::*;
+use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory, ReplyOpen, ReplyEmpty, ReplyData};
 use time::Timespec;
 use libc::ENOENT;
 use metadata::{Metadata, INode, INodeKind};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
-const HELLO_TXT_CONTENT: &'static str = "Hello World!\n";
-
 pub struct MarkFS {
     local_path: OsString,
-    metadata: Metadata
+    metadata: Metadata,
+    open_fh: HashMap<u64, File>,
+    last_fh: u64
 }
 
 impl MarkFS {
     pub fn new(local_path: &OsString) -> MarkFS {
         MarkFS {
             local_path: local_path.clone(),
-            metadata: Metadata::new(&local_path)
+            metadata: Metadata::new(&local_path),
+            open_fh: HashMap::new(),
+            last_fh: 0
         }
     }
 
@@ -110,12 +118,52 @@ impl Filesystem for MarkFS {
         }
     }
 
-    fn read (&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
-        println!("local path: {:?}", self.local_path);
-        if ino == 2 {
-            reply.data(&HELLO_TXT_CONTENT.as_bytes()[offset as usize..]);
+    fn open(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
+        if _ino == 2 {
+            let path_buf = Path::new(&self.local_path).join("hello.txt").join("1");
+            let file = OpenOptions::new().read(true).open(path_buf).unwrap();
+            self.last_fh += 1;
+            self.open_fh.insert(self.last_fh, file);
+
+            reply.opened(self.last_fh, _flags);
         } else {
             reply.error(ENOENT);
+        }
+    }
+
+    fn release(&mut self, _req: &Request, _ino: u64, _fh: u64, _flags: u32, _lock_owner: u64, _flush: bool, reply: ReplyEmpty) {
+        match self.open_fh.remove(&_fh) {
+            Some(_file) => {
+                reply.ok();
+            },
+            None => {
+                reply.error(ENOENT);
+            }
+        }
+    }
+
+    fn read (&mut self, _req: &Request, _ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
+        match self.open_fh.remove(&_fh) {
+            Some(mut file) => {
+                file.seek(SeekFrom::Start(offset)).unwrap();
+
+                let mut data = Vec::<u8>::with_capacity(_size as usize);
+                unsafe { data.set_len(_size as usize) };
+
+                match file.read(&mut data) {
+                    Ok(n) => {
+                        self.open_fh.insert(_fh, file);
+                        data.truncate(n);
+                        reply.data(data.as_slice());
+                    },
+                    Err(_e) => {
+                        reply.error(ENOENT);
+                    }
+                }
+            },
+            None => {
+                reply.error(ENOENT);
+            }
         }
     }
 }
