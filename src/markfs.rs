@@ -1,6 +1,6 @@
 use std::ffi::{OsStr, OsString};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::fs::OpenOptions;
 use std::fs::File;
 use std::io::{SeekFrom};
@@ -12,10 +12,14 @@ use metadata::{Metadata, INode, INodeKind};
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
+enum FileHandle {
+    Local(File)
+}
+
 pub struct MarkFS {
     local_path: OsString,
     metadata: Metadata,
-    open_fh: HashMap<u64, File>,
+    open_fh: HashMap<u64, FileHandle>,
     last_fh: u64
 }
 
@@ -52,6 +56,20 @@ impl MarkFS {
             gid: 1000,
             rdev: 0,
             flags: 0
+        }
+    }
+
+    fn get_path(&self, inode: &INode, path_buf: &mut PathBuf) {
+        if inode.ino == 1 {
+            path_buf.push(&self.local_path);
+        } else {
+            let parent_inode = self.metadata.get_by_id(&inode.parent).unwrap();
+            self.get_path(&parent_inode, path_buf);
+            path_buf.push(&inode.name);
+
+            if inode.kind.is_regular_file() {
+                path_buf.push(&inode.current_version);
+            }
         }
     }
 }
@@ -102,7 +120,7 @@ impl Filesystem for MarkFS {
                         reply.add(parent.ino, 1, FileType::Directory, "..");
 
                         let mut index = 2;
-                        for child in self.metadata.get_children(&inode.parent) {
+                        for child in self.metadata.get_children(&inode.id) {
                             reply.add(child.ino, index, self.inode_kind_to_file_type(&child.kind), child.name);
                             index += 1;
                         }
@@ -119,21 +137,31 @@ impl Filesystem for MarkFS {
     }
 
     fn open(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        if _ino == 2 {
-            let path_buf = Path::new(&self.local_path).join("hello.txt").join("1");
-            let file = OpenOptions::new().read(true).open(path_buf).unwrap();
-            self.last_fh += 1;
-            self.open_fh.insert(self.last_fh, file);
+        match self.metadata.get_by_ino(_ino) {
+            Some(inode) => {
+                if inode.kind.is_regular_file() {
+                    let mut path_buf = PathBuf::new();
+                    self.get_path(&inode, &mut path_buf);
 
-            reply.opened(self.last_fh, _flags);
-        } else {
-            reply.error(ENOENT);
+                    let file = OpenOptions::new().read(true).open(path_buf).unwrap();
+                    let file_handle = FileHandle::Local(file);
+                    self.last_fh += 1;
+                    self.open_fh.insert(self.last_fh, file_handle);
+
+                    reply.opened(self.last_fh, _flags);
+                } else {
+                    reply.error(ENOENT);
+                }
+            },
+            None => {
+                reply.error(ENOENT);
+            }
         }
     }
 
     fn release(&mut self, _req: &Request, _ino: u64, _fh: u64, _flags: u32, _lock_owner: u64, _flush: bool, reply: ReplyEmpty) {
         match self.open_fh.remove(&_fh) {
-            Some(_file) => {
+            Some(FileHandle::Local(_file)) => {
                 reply.ok();
             },
             None => {
@@ -144,7 +172,7 @@ impl Filesystem for MarkFS {
 
     fn read (&mut self, _req: &Request, _ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
         match self.open_fh.remove(&_fh) {
-            Some(mut file) => {
+            Some(FileHandle::Local(mut file)) => {
                 file.seek(SeekFrom::Start(offset)).unwrap();
 
                 let mut data = Vec::<u8>::with_capacity(_size as usize);
@@ -152,7 +180,6 @@ impl Filesystem for MarkFS {
 
                 match file.read(&mut data) {
                     Ok(n) => {
-                        self.open_fh.insert(_fh, file);
                         data.truncate(n);
                         reply.data(data.as_slice());
                     },
@@ -160,6 +187,7 @@ impl Filesystem for MarkFS {
                         reply.error(ENOENT);
                     }
                 }
+                self.open_fh.insert(_fh, FileHandle::Local(file));
             },
             None => {
                 reply.error(ENOENT);
