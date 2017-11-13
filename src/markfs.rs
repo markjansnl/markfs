@@ -171,8 +171,8 @@ impl Filesystem for MarkFS {
     }
 
     fn read (&mut self, _req: &Request, _ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
-        match self.open_fh.remove(&_fh) {
-            Some(FileHandle::Local(mut file)) => {
+        match self.open_fh.get_mut(&_fh) {
+            Some(&mut FileHandle::Local(ref mut file)) => {
                 file.seek(SeekFrom::Start(offset)).unwrap();
 
                 let mut data = Vec::<u8>::with_capacity(_size as usize);
@@ -187,7 +187,6 @@ impl Filesystem for MarkFS {
                         reply.error(ENOENT);
                     }
                 }
-                self.open_fh.insert(_fh, FileHandle::Local(file));
             },
             None => {
                 reply.error(ENOENT);
