@@ -79,14 +79,14 @@ impl Filesystem for MarkFS {
             }
         };
         let name_string = match name.to_str() {
-            Some(name_slice) => name_slice.to_string(),
+            Some(slice) => slice.to_string(),
             None => {
                 reply.error(ENOENT);
                 return;
             }
         };
 
-        match self.metadata.lookup(&parent_inode.id, &name_string) {
+        match self.metadata.lookup(&parent_inode, &name_string) {
             Some(inode) => {
                 reply.entry(&TTL, &self.inode_to_fileattr(inode), 0);
             },
@@ -107,6 +107,42 @@ impl Filesystem for MarkFS {
         }
     }
 
+    fn mkdir(&mut self, _req: &Request, _parent: u64, _name: &OsStr, _mode: u32, reply: ReplyEntry) {
+        let parent_inode = match self.metadata.get_by_ino(_parent) {
+            Some(inode) => inode,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let name_string = match _name.to_str() {
+            Some(slice) => slice.to_string(),
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+
+        match self.metadata.create_dir(&parent_inode, &name_string) {
+            Ok(inode) => {
+                let mut path_buf = PathBuf::new();
+                self.get_path(&inode, &mut path_buf);
+
+                match LocalFileOperations::create_dir(&path_buf.as_path()) {
+                    Ok(_) => {
+                        reply.entry(&TTL, &self.inode_to_fileattr(inode), 0);
+                    },
+                    Err(_) => {
+                        reply.error(ENOSYS);
+                    }
+                }
+            },
+            Err(_) => {
+                reply.error(ENOENT);
+            }
+        }
+    }
+
     fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
         match self.metadata.get_by_ino(ino) {
             Some(inode) => {
@@ -118,7 +154,7 @@ impl Filesystem for MarkFS {
                         reply.add(parent.ino, 1, FileType::Directory, "..");
 
                         let mut index = 2;
-                        for child in self.metadata.get_children(&inode.id) {
+                        for child in self.metadata.get_children(&inode) {
                             reply.add(child.ino, index, self.inode_kind_to_file_type(&child.kind), child.name);
                             index += 1;
                         }
@@ -215,7 +251,7 @@ impl Filesystem for MarkFS {
             }
         };
 
-        match self.metadata.lookup(&parent_inode.id, &name_string) {
+        match self.metadata.lookup(&parent_inode, &name_string) {
             Some(old_inode) => {
                 match self.metadata.rename(&old_inode, &new_parent_inode, &new_name_string) {
                     Ok(new_inode) => {

@@ -124,26 +124,40 @@ impl Metadata {
         self.query_inode("inode.id = ?1", &[&id.as_str()]).pop()
     }
 
-    pub fn lookup(&self, parent: &String, name: &String) -> Option<INode> {
-        self.query_inode("inode.parent = ?1 AND inode.name = ?2", &[&parent.as_str(), &name.as_str()]).pop()
+    pub fn lookup(&self, parent: &INode, name: &String) -> Option<INode> {
+        self.query_inode("inode.parent = ?1 AND inode.name = ?2", &[&parent.id.as_str(), &name.as_str()]).pop()
     }
 
-    pub fn get_children(&self, parent: &String) -> Vec<INode> {
-        self.query_inode("inode.parent = ?1 AND inode.id <> ?1", &[&parent.as_str()])
+    pub fn get_children(&self, parent: &INode) -> Vec<INode> {
+        self.query_inode("inode.parent = ?1 AND inode.id <> ?1", &[&parent.id.as_str()])
     }
 
-    pub fn rename(&self, inode: &INode, new_parent_inode: &INode, new_name_string: &String) -> Result<INode, ()> {
+    pub fn create_dir(&self, parent: &INode, name: &String) -> Result<INode, ()> {
+        let id = Uuid::new_v4().to_string();
+        let create_time = time::get_time();
+
+        match self.conn.execute("
+            INSERT INTO inode (id, parent, name, kind, atime, mtime, ctime, crtime, nlink)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?5, ?5, ?6)",
+            &[&id, &parent.id.as_str(), &name.as_str(), &(INodeKind::Directory as i32), &create_time, &1]) {
+
+            Ok(_)  => Ok(self.query_inode("inode.id = ?1", &[&id.as_str()]).pop().unwrap()),
+            Err(_) => Err(())
+        }
+    }
+
+    pub fn rename(&self, inode: &INode, new_parent_inode: &INode, new_name: &String) -> Result<INode, ()> {
         match self.conn.execute("
             UPDATE inode
                SET parent = ?2,
                    name = ?3
-             WHERE id = ?1", &[&inode.id, &new_parent_inode.id, &new_name_string.as_str()]) {
+             WHERE id = ?1", &[&inode.id, &new_parent_inode.id, &new_name.as_str()]) {
             Ok(_)   => Ok(INode {
                 parent: new_parent_inode.id.clone(),
-                name: new_name_string.clone(),
+                name: new_name.clone(),
                 ..inode.clone()
             }),
-            Err(_e) => Err(())
+            Err(_) => Err(())
         }
 
     }

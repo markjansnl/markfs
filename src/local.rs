@@ -45,6 +45,13 @@ impl FileHandle for LocalFileHandle {
 pub struct LocalFileOperations;
 
 impl LocalFileOperations {
+	pub fn create_dir(path: &Path) -> Result<(), ()> {
+		match std::fs::create_dir(path) {
+			Ok(_)  => Ok(()),
+			Err(_) => Err(())
+		}
+	}
+
 	pub fn rename(old_path: &Path, new_path: &Path) -> Result<(), ()> {
 		match std::fs::rename(old_path, new_path) {
 			Ok(_)  => Ok(()),
