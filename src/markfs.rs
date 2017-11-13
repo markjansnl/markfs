@@ -3,12 +3,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory, ReplyOpen, ReplyEmpty, ReplyData};
 use time::Timespec;
-use libc::ENOENT;
+use libc::{ENOENT, ENOSYS};
 use metadata::{Metadata, INode, INodeKind};
 
-use file_handle::{FileHandle, LocalFileHandle};
+use local::LocalFileHandle;
+use local::LocalFileOperations;
 
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
+
+pub trait FileHandle {
+    fn read(&mut self, offset: u64, size: u32) -> Result<Vec<u8>, ()>;
+}
 
 pub struct MarkFS {
     local_path: OsString,
@@ -46,8 +51,8 @@ impl MarkFS {
             kind: self.inode_kind_to_file_type(&inode.kind),
             perm: 0o775,
             nlink: inode.nlink,
-            uid: 1000,
-            gid: 1000,
+            uid: 501,
+            gid: 20,
             rdev: 0,
             flags: 0
         }
@@ -60,23 +65,22 @@ impl MarkFS {
             let parent_inode = self.metadata.get_by_id(&inode.parent).unwrap();
             self.get_path(&parent_inode, path_buf);
             path_buf.push(&inode.name);
-
-            if inode.kind.is_regular_file() {
-                path_buf.push(&inode.current_version);
-            }
         }
     }
 }
 
 impl Filesystem for MarkFS {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        let parent_inode = self.metadata.get_by_ino(parent).unwrap();
-        let name_string = match name.to_str() {
-            Some(name_slice) => {
-                name_slice.to_string()
-            },
+        let parent_inode = match self.metadata.get_by_ino(parent) {
+            Some(inode) => inode,
             None => {
-                // UTF-8 conversion error
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let name_string = match name.to_str() {
+            Some(name_slice) => name_slice.to_string(),
+            None => {
                 reply.error(ENOENT);
                 return;
             }
@@ -97,7 +101,7 @@ impl Filesystem for MarkFS {
             Some(inode) => {
                 reply.attr(&TTL, &self.inode_to_fileattr(inode));
             },
-            None => {
+            None => { 
                 reply.error(ENOENT);
             }
         }
@@ -143,7 +147,7 @@ impl Filesystem for MarkFS {
 
                     reply.opened(self.last_fh, _flags);
                 } else {
-                    reply.error(ENOENT);
+                    reply.error(ENOSYS);
                 }
             },
             None => {
@@ -158,7 +162,7 @@ impl Filesystem for MarkFS {
                 reply.ok();
             },
             None => {
-                reply.error(ENOENT);
+                reply.error(ENOSYS);
             }
         }
     }
@@ -171,7 +175,67 @@ impl Filesystem for MarkFS {
                         reply.data(data.as_slice());
                     },
                     Err(_e) => {
-                        reply.error(ENOENT);
+                        reply.error(ENOSYS);
+                    }
+                }
+            },
+            None => {
+                reply.error(ENOSYS);
+            }
+        }
+    }
+
+    fn rename(&mut self, _req: &Request, _parent: u64, _name: &OsStr, _newparent: u64, _newname: &OsStr, reply: ReplyEmpty) {
+        let parent_inode = match self.metadata.get_by_ino(_parent) {
+            Some(inode) => inode,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let new_parent_inode = match self.metadata.get_by_ino(_newparent) {
+            Some(inode) => inode,
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let name_string = match _name.to_str() {
+            Some(slice) => slice.to_string(),
+            None => {
+                reply.error(ENOENT);
+                return;
+            }
+        };
+        let new_name_string = match _newname.to_str() {
+            Some(slice) => slice.to_string(),
+            None => {
+                reply.error(ENOSYS);
+                return;
+            }
+        };
+
+        match self.metadata.lookup(&parent_inode.id, &name_string) {
+            Some(old_inode) => {
+                match self.metadata.rename(&old_inode, &new_parent_inode, &new_name_string) {
+                    Ok(new_inode) => {
+                        let mut path_buf_old = PathBuf::new();
+                        self.get_path(&old_inode, &mut path_buf_old);
+
+                        let mut path_buf_new = PathBuf::new();
+                        self.get_path(&new_inode, &mut path_buf_new);
+
+                        match LocalFileOperations::rename(&path_buf_old.as_path(), &path_buf_new.as_path()) {
+                            Ok(()) => {
+                                reply.ok();
+                            },
+                            Err(_) => {
+                                reply.error(ENOSYS);
+                            }
+                        }
+                    },
+                    Err(_) => {
+                        reply.error(ENOSYS);
                     }
                 }
             },

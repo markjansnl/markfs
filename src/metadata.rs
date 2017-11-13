@@ -132,6 +132,22 @@ impl Metadata {
         self.query_inode("inode.parent = ?1 AND inode.id <> ?1", &[&parent.as_str()])
     }
 
+    pub fn rename(&self, inode: &INode, new_parent_inode: &INode, new_name_string: &String) -> Result<INode, ()> {
+        match self.conn.execute("
+            UPDATE inode
+               SET parent = ?2,
+                   name = ?3
+             WHERE id = ?1", &[&inode.id, &new_parent_inode.id, &new_name_string.as_str()]) {
+            Ok(_)   => Ok(INode {
+                parent: new_parent_inode.id.clone(),
+                name: new_name_string.clone(),
+                ..inode.clone()
+            }),
+            Err(_e) => Err(())
+        }
+
+    }
+
     fn query_inode(&self, where_clause: &str, params: &[&ToSql]) -> Vec<INode> {
         let sql = format!("
             SELECT inode.ino,

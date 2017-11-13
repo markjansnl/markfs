@@ -10,7 +10,7 @@ use markfs::MarkFS;
 
 mod markfs;
 mod metadata;
-mod file_handle;
+mod local;
 
 fn main () {
     let args: Vec<OsString> = env::args_os().collect();
