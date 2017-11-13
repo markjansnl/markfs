@@ -1,25 +1,19 @@
 use std::ffi::{OsStr, OsString};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::fs::OpenOptions;
-use std::fs::File;
-use std::io::{SeekFrom};
-use std::io::prelude::*;
 use fuse::{Filesystem, Request, FileType, FileAttr, ReplyEntry, ReplyAttr, ReplyDirectory, ReplyOpen, ReplyEmpty, ReplyData};
 use time::Timespec;
 use libc::ENOENT;
 use metadata::{Metadata, INode, INodeKind};
 
-const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
+use file_handle::{FileHandle, LocalFileHandle};
 
-enum FileHandle {
-    Local(File)
-}
+const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
 pub struct MarkFS {
     local_path: OsString,
     metadata: Metadata,
-    open_fh: HashMap<u64, FileHandle>,
+    open_fh: HashMap<u64, Box<FileHandle>>,
     last_fh: u64
 }
 
@@ -143,10 +137,9 @@ impl Filesystem for MarkFS {
                     let mut path_buf = PathBuf::new();
                     self.get_path(&inode, &mut path_buf);
 
-                    let file = OpenOptions::new().read(true).open(path_buf).unwrap();
-                    let file_handle = FileHandle::Local(file);
+                    let file_handle = LocalFileHandle::new(path_buf.as_path(), _flags as i32);
                     self.last_fh += 1;
-                    self.open_fh.insert(self.last_fh, file_handle);
+                    self.open_fh.insert(self.last_fh, Box::new(file_handle));
 
                     reply.opened(self.last_fh, _flags);
                 } else {
@@ -161,7 +154,7 @@ impl Filesystem for MarkFS {
 
     fn release(&mut self, _req: &Request, _ino: u64, _fh: u64, _flags: u32, _lock_owner: u64, _flush: bool, reply: ReplyEmpty) {
         match self.open_fh.remove(&_fh) {
-            Some(FileHandle::Local(_file)) => {
+            Some(_) => {
                 reply.ok();
             },
             None => {
@@ -172,15 +165,9 @@ impl Filesystem for MarkFS {
 
     fn read (&mut self, _req: &Request, _ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
         match self.open_fh.get_mut(&_fh) {
-            Some(&mut FileHandle::Local(ref mut file)) => {
-                file.seek(SeekFrom::Start(offset)).unwrap();
-
-                let mut data = Vec::<u8>::with_capacity(_size as usize);
-                unsafe { data.set_len(_size as usize) };
-
-                match file.read(&mut data) {
-                    Ok(n) => {
-                        data.truncate(n);
+            Some(ref mut file_handle) => {
+                match file_handle.read(offset, _size) {
+                    Ok(data) => {
                         reply.data(data.as_slice());
                     },
                     Err(_e) => {
