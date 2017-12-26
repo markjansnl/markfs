@@ -26,8 +26,8 @@ impl LocalFileHandle {
 }
 
 impl FileHandle for LocalFileHandle {
-	fn read(&mut self, offset: u64, size: u32) -> Result<Vec<u8>, ()> {
-        self.file.seek(SeekFrom::Start(offset)).unwrap();
+	fn read(&mut self, offset: i64, size: u32) -> Result<Vec<u8>, ()> {
+        self.file.seek(SeekFrom::Start(offset as u64)).unwrap();
 
         let mut data = Vec::<u8>::with_capacity(size as usize);
         unsafe { data.set_len(size as usize) };

@@ -12,7 +12,7 @@ use local::LocalFileOperations;
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
 pub trait FileHandle {
-    fn read(&mut self, offset: u64, size: u32) -> Result<Vec<u8>, ()>;
+    fn read(&mut self, offset: i64, size: u32) -> Result<Vec<u8>, ()>;
 }
 
 pub struct MarkFS {
@@ -143,7 +143,7 @@ impl Filesystem for MarkFS {
         }
     }
 
-    fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
+    fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: i64, mut reply: ReplyDirectory) {
         match self.metadata.get_by_ino(ino) {
             Some(inode) => {
                 if inode.kind.is_directory() {
@@ -203,7 +203,7 @@ impl Filesystem for MarkFS {
         }
     }
 
-    fn read (&mut self, _req: &Request, _ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
+    fn read (&mut self, _req: &Request, _ino: u64, _fh: u64, offset: i64, _size: u32, reply: ReplyData) {
         match self.open_fh.get_mut(&_fh) {
             Some(ref mut file_handle) => {
                 match file_handle.read(offset, _size) {
