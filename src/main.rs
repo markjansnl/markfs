@@ -8,6 +8,8 @@ use std::env;
 use std::ffi::OsString;
 use markfs::MarkFS;
 
+mod types;
+
 mod error;
 mod markfs;
 mod metadata;
